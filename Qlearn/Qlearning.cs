@@ -1,7 +1,7 @@
-﻿using MathNet.Numerics.Distributions;
-using MySql.Data.MySqlClient;
+﻿using MySql.Data.MySqlClient;
 using System;
 using System.Collections.Generic;
+using System.IO;
 using System.Linq;
 
 namespace @this
@@ -19,7 +19,9 @@ namespace @this
         public List<List<double>> GameData = new List<List<double>> { };
 
         private double DiscountRate = 1;
-        private static Random random = new Random(1);
+        private static Random random = new Random(2);
+
+        private StreamWriter writetext = new StreamWriter("Analysis.txt");
 
         public Qlearning(string Database)
         {
@@ -94,30 +96,37 @@ namespace @this
                 {
                     double Max = 0;
                     for (int j = 11; j < 20; j++) { if (Max < GameData[i + 2][j]) { Max = GameData[i + 2][j]; } }
-                    
-                    GameData[i][Convert.ToInt32(GameData[i][20]) + 11] = (((GameData[i][21] + DiscountRate * Max) + GameData[i][Convert.ToInt32(GameData[i][20]) + 11]) / 2+(DiscountRate-1));
-                    
+
+                    //GameData[i][Convert.ToInt32(GameData[i][20]) + 11] = (((GameData[i][21] + DiscountRate * Max) + GameData[i][Convert.ToInt32(GameData[i][20]) + 11])/2);
+                    //GameData[i][Convert.ToInt32(GameData[i][20]) + 11] += 0.2*(GameData[i][21] + DiscountRate * Max + GameData[i][Convert.ToInt32(GameData[i][20]) + 11]);
+                    GameData[i][Convert.ToInt32(GameData[i][20]) + 11] += (GameData[i][21] + DiscountRate * Max);
                 }
                 else
                 {
-                    GameData[i][Convert.ToInt32(GameData[i][20]) + 11] = ((GameData[i][21] + GameData[i][Convert.ToInt32(GameData[i][20]) + 11]) / 2);
-                    
+                    GameData[i][Convert.ToInt32(GameData[i][20]) + 11] += (GameData[i][21]);
                 }
             }
 
+            
+            // apply symmetry averaging
+            List<List<double>> SymmetrisedData = SymmetriseData();
+            string Result = "";
+            for (int i = 11; i < 20; i++) { Result += SymmetrisedData[0][i] + "\t"; }
+            writetext.WriteLine(Result); // hard copy of data
+
             // Save data to MySQL database
-            for (int i = 0; i < GameData.Count; i++)
+            for (int i = 0; i < SymmetrisedData.Count; i++)
             {
                 string cmd = "INSERT INTO qlearn VALUES(";
-                for (int j = 0; j < GameData[i].Count - 2; j++)
+                for (int j = 0; j < SymmetrisedData[i].Count; j++)
                 {
-                    if (j < GameData[i].Count - 3) { cmd += GameData[i][j].ToString() + ", "; }
-                    else { cmd += GameData[i][j].ToString() + ") ON DUPLICATE KEY UPDATE "; }
+                    if (j < SymmetrisedData[i].Count - 1) { cmd += SymmetrisedData[i][j].ToString() + ", "; }
+                    else { cmd += SymmetrisedData[i][j].ToString() + ") ON DUPLICATE KEY UPDATE "; }
                 }
                 for (int j = 11; j < 20; j++)
                 {
-                    if (j < 19) { cmd += Score[j - 11].ToString() + " = " + GameData[i][j].ToString() + ", "; }
-                    else { cmd += Score[j - 11].ToString() + " = " + GameData[i][j].ToString() + ";"; }
+                    if (j < 19) { cmd += Score[j - 11].ToString() + " = " + SymmetrisedData[i][j].ToString() + ", "; }
+                    else { cmd += Score[j - 11].ToString() + " = " + SymmetrisedData[i][j].ToString() + ";"; }
                 }
 
                 if (OpenConnection() == true)
@@ -132,11 +141,146 @@ namespace @this
             //GameData.Clear();
         }
 
+        public List<List<double>> SymmetriseData()
+        {
+            // the resultant symmetrical data
+            List<List<double>> SymetricallyUnique = new List<List<double>> { };
+
+            for (int i = 0; i < GameData.Count(); i++)
+            {
+                List<double> GameState = new List<double> { }; // Games state information
+                List<double> ScoreData = new List<double> { }; // Score information
+                // get data.
+                for (int j = 2; j < 20; j++)
+                {
+                    if (j < 11) { GameState.Add(GameData[i][j]); }
+                    else ScoreData.Add(GameData[i][j]);
+                }
+
+                // Get all possible symmetric configurations
+                List<List<double>> SymmertricCongfigurations = new List<List<double>> { };
+                List<double> FirstRow = new List<double> { };
+                for (int j = 0; j < 20; j++) { FirstRow.Add(GameData[i][j]); }
+                SymmertricCongfigurations.Add(FirstRow);
+
+                // Rotate 90 degrees clockwise
+                List<double> Row1 = new List<double> { };
+                List<double> Row1A = Rotate(GameState);
+                List<double> Row1B = Rotate(ScoreData);
+                Row1.Add(GameData[i][0]);
+                Row1.Add(GameData[i][1]);
+                Row1.AddRange(Row1A);
+                Row1.AddRange(Row1B);
+                SymmertricCongfigurations.Add(Row1);
+
+                // Rotate 180 degrees clockwise
+                List<double> Row2 = new List<double> { };
+                List<double> Row2A = Rotate(Rotate(GameState));
+                List<double> Row2B = Rotate(Rotate(ScoreData));
+                Row2.Add(GameData[i][0]);
+                Row2.Add(GameData[i][1]);
+                Row2.AddRange(Row2A);
+                Row2.AddRange(Row2B);
+                SymmertricCongfigurations.Add(Row2);
+
+                // Rotate 270 degrees clockwise
+                List<double> Row3 = new List<double> { };
+                List<double> Row3A = Rotate(Rotate(Rotate(GameState)));
+                List<double> Row3B = Rotate(Rotate(Rotate(ScoreData)));
+                Row3.Add(GameData[i][0]);
+                Row3.Add(GameData[i][1]);
+                Row3.AddRange(Row3A);
+                Row3.AddRange(Row3B);
+                SymmertricCongfigurations.Add(Row3);
+
+                // Mirror Horizontally
+                List<double> Row4 = new List<double> { };
+                List<double> Row4A = HorizantalMirror(GameState);
+                List<double> Row4B = HorizantalMirror(ScoreData);
+                Row4.Add(GameData[i][0]);
+                Row4.Add(GameData[i][1]);
+                Row4.AddRange(Row4A);
+                Row4.AddRange(Row4B);
+                SymmertricCongfigurations.Add(Row4);
+
+                // Mirror Vertically
+                List<double> Row5 = new List<double> { };
+                List<double> Row5A = VerticalMirror(GameState);
+                List<double> Row5B = VerticalMirror(ScoreData);
+                Row5.Add(GameData[i][0]);
+                Row5.Add(GameData[i][1]);
+                Row5.AddRange(Row5A);
+                Row5.AddRange(Row5B);
+                SymmertricCongfigurations.Add(Row5);
+
+                // Mirror left diagonal
+                List<double> Row6 = new List<double> { };
+                List<double> Row6A = Rotate(HorizantalMirror(GameState));
+                List<double> Row6B = Rotate(HorizantalMirror(ScoreData));
+                Row6.Add(GameData[i][0]);
+                Row6.Add(GameData[i][1]);
+                Row6.AddRange(Row6A);
+                Row6.AddRange(Row6B);
+                SymmertricCongfigurations.Add(Row6);
+
+                // Mirror Right diagonal
+                List<double> Row7 = new List<double> { };
+                List<double> Row7A = HorizantalMirror(Rotate(GameState));
+                List<double> Row7B = HorizantalMirror(Rotate(ScoreData));
+                Row7.Add(GameData[i][0]);
+                Row7.Add(GameData[i][1]);
+                Row7.AddRange(Row7A);
+                Row7.AddRange(Row7B);
+                SymmertricCongfigurations.Add(Row7);
+
+                // average score data over symmetrically equivalent positions while keeping unique states
+                // this means that on symmetric transformation game state remains the same
+
+                for (int a = 0; a < SymmertricCongfigurations.Count; a++)
+                {
+                    List<double> Row = new List<double> { };
+                    Row.AddRange(SymmertricCongfigurations[a]); // local copy of row
+
+                    // check to see if row is in unique list if not add scores
+                    if (!_IsPresent(SymetricallyUnique, Row))
+                    {
+                        SymetricallyUnique.Add(Row);
+                    }
+                }
+            }
+
+            return SymetricallyUnique;
+        }
+
+        private bool _IsPresent(List<List<double>> Data, List<double> Element)
+        {
+            for (int i = 0; i < Data.Count; i++) // only mataches on gamestate not score
+            {
+                List<double> MatchKey = new List<double> { };
+                for (int j = 2; j < 11; j++) { MatchKey.Add(Data[i][j]); }
+
+                List<double> Key = new List<double> { };
+                for (int b = 2; b < 11; b++) { Key.Add(Element[b]); } // key is Game state used for matching
+
+                if (MatchKey.SequenceEqual(Key) == true)
+                {
+                    for (int b = 11; b < 20; b++)
+                    {
+                        if (Data[i][b] != 0 && Element[b] != 0) { Data[i][b] = (Data[i][b] + Element[b]) / 2; }
+                        else Data[i][b] += Element[b];
+                    }
+                    return true;
+                }
+            }
+            return false;
+        }
+
         public int BestMove()
         {
             // returns current best first position.
             List<double> Max = new List<double> { 0, 0 };
             for (int i = 11; i < 20; i++) { if (Max[1] < GameData[0][i]) { Max[0] = i - 11; Max[1] = GameData[0][i]; } }
+
             return Convert.ToInt32(Max[0]);
         }
 
@@ -184,26 +328,53 @@ namespace @this
 
         private static int GenerateMove(List<double> PositionScore, List<double> GameState)
         {
-            List<double> Probibility = new List<double> { };
-            for (int i = 0; i < PositionScore.Count; i++)
+            //double I = 0; // number of possible moves
+            //double J = 0; // number of moves accounted for
+
+            //for (int i = 0; i < GameState.Count; i++)
+            //{
+            //    if (GameState[i] == 0) { I++; }
+            //    if (PositionScore[i] == 0 && GameState[i] == 0) { J++; }
+            //}
+
+            //List<double> Probibility = new List<double> { };
+
+            //for (int i = 0; i < PositionScore.Count; i++)
+            //{
+            //    if ( PositionScore[i] != 0) { Probibility.Add(PositionScore[i]); }
+            //    else if (PositionScore[i] == 0 && GameState[i] == 0) {
+            //        if (I ==1 || J==1){ Probibility.Add(1); }
+            //        else Probibility.Add((1 / I) + (1 / J) * (PositionScore[i] - (1 / I)));
+            //    }
+            //    else Probibility.Add(0);
+            //}
+
+            //// renormalise
+
+            //double Sum = Probibility.Sum();
+            //for (int i = 0; i < Probibility.Count; i++) { Probibility[i] /= Sum; }
+
+            //double cumulatedProbability = random.NextDouble();
+
+            //for (int i = 0; i < Probibility.Count; i++)
+            //{
+            //    if ((cumulatedProbability -= Probibility[i]) <= 0)
+            //        return i;
+            //}
+
+            //throw new InvalidOperationException();
+
+            // kinda of crude as the 0.5 is arbitrary and makes not reference at all to current probabilities.
+            double A = random.NextDouble();
+            if (A < 0.2 && GameState[PositionScore.IndexOf(PositionScore.Max())] == 0) { return PositionScore.IndexOf(PositionScore.Max()); }
+            else
             {
-                Normal Distrubution = new Normal(0, 0.7);
-                if (GameState[i] != 0) { Probibility.Add(0); } // eliminate impossible move
-                else Probibility.Add(Distrubution.CumulativeDistribution(PositionScore[i]));
+                while (true)
+                {
+                    int Move = random.Next(0, PositionScore.Count);
+                    if (GameState[Move] == 0) { return Move; }
+                }
             }
-            
-            double Sum = Probibility.Sum();
-            for (int i = 0; i < Probibility.Count(); i++) { Probibility[i] /= Sum; }
-
-            double cumulatedProbability = random.NextDouble();
-
-            for (int i = 0; i < Probibility.Count; i++)
-            {
-                if ((cumulatedProbability -= Probibility[i]) <= 0)
-                    return i;
-            }
-
-            throw new InvalidOperationException();
         }
 
         private void Initialize(string Database)
@@ -261,107 +432,6 @@ namespace @this
             }
         }
 
-        private bool _IsPresent(List<List<double>> Data, List<double> Element)
-        {
-            //for (int i = 0; i < Data.Count; i++)
-            //{
-            //    if (Data[i].SequenceEqual(Element) == true) { return true; }
-            //}
-            return false;
-        }
-
-        public List<List<double>> SymetriseResults(List<double> GameState)
-        {
-            List<List<double>> Symetry = new List<List<double>> { };
-            
-            List<double> Row1 = new List<double> { };
-            Row1.AddRange(GameState);
-            if (!_IsPresent(Symetry,Row1)) {Symetry.Add(Row1); }
-            
-            List<double> Row2 = Rotate(GameState);
-            if (!_IsPresent(Symetry, Row2)) { Symetry.Add(Row2); }
-
-            List<double> Row3 = Rotate(Rotate(GameState));
-            if (!_IsPresent(Symetry, Row3)) { Symetry.Add(Row3); }
-
-            List<double> Row4 = Rotate(Rotate(Rotate(GameState)));
-            if (!_IsPresent(Symetry, Row4)) { Symetry.Add(Row4); }
-
-            List<double> Row5 = HorizantalMirror(GameState);
-            if (!_IsPresent(Symetry, Row5)) { Symetry.Add(Row5); }
-
-            List<double> Row6 = VerticalMirror(GameState);
-            if (!_IsPresent(Symetry, Row6)) { Symetry.Add(Row6); }
-
-            List<double> Row7 = Rotate(HorizantalMirror(GameState));
-            if (!_IsPresent(Symetry, Row7)) { Symetry.Add(Row7); }
-
-            List<double> Row8 = HorizantalMirror(Rotate(GameState));
-            if (!_IsPresent(Symetry, Row8)) { Symetry.Add(Row8); }
-            
-            return Symetry;
-        }
-
-        public void SymMove_Set(List<double> ResultsRow)
-        {
-            // Get GameState from input
-            List<double> GameState = new List<double> { };
-            for (int i = 2; i < 11; i++) { GameState.Add(ResultsRow[i]); }
-
-            // Get score from input
-            List<double> Score = new List<double> { };
-            for (int i = 11; i < 20; i++) { Score.Add(ResultsRow[i]); }
-
-            // Test to ascertain if symmetry boards can be found from database
-
-            List<List<double>> PossibileSymmetries = SymetriseResults(GameState);
-
-            for (int a = 0; a < PossibileSymmetries.Count; a++)
-            {
-                string cmd = "SELECT COUNT(*) FROM qlearn WHERE (";
-                for (int b = 0; b < GameState.Count-1; b++) { cmd += Possistion[b]+" = " + PossibileSymmetries[a][b] + " and "; }
-                cmd += Possistion[GameState.Count-1] + " = " + GameState[GameState.Count-1] + ");";
-                if (OpenConnection() == true)
-                {
-                    MySqlCommand CMD = new MySqlCommand(cmd, connection);
-                    try
-                    {
-                        int count = Convert.ToInt32(CMD.ExecuteScalar());
-                        if (count == 1)
-                        {
-                            string update = "UPDATE TABLE qlearn SET ";
-                            for (int b = 11; b < 20; b++)
-                            {
-                                if (b < 19) { cmd += Score[b - 11] + " = " + ResultsRow[b] + " and "; }
-                                else cmd += Score[b - 11] + " = " + ResultsRow[b] + ");";
-                            }
-                        }
-                    }
-                    catch (MySqlException ex) { Console.Write(ex.Message); }
-                }
-                CloseConnection();
-            }
-
-            // if not in database
-
-            string sqlcmd = "INSERT INTO test VALUES(";
-            for (int j = 2; j < 11; j++)
-            {
-                if (j < 10) { sqlcmd += ResultsRow[j].ToString() + ", "; }
-                else { sqlcmd += ResultsRow[j].ToString() + ");"; }
-            }
-
-            if (OpenConnection() == true)
-            {
-                MySqlCommand SQLCMD = new MySqlCommand(sqlcmd, connection);
-                try { SQLCMD.ExecuteNonQuery(); }
-                catch (MySqlException ex) { Console.Write(ex.Message); }
-            }
-            CloseConnection();
-
-            return;
-        }
-
         private List<double> Rotate(List<double> GameState)
         {
             List<double> Rotated = new List<double> { };
@@ -413,7 +483,7 @@ namespace @this
             List<double> Rotated = new List<double> { };
             Rotated.AddRange(GameState);
 
-            for (int i = 0; i < 9; i+=3)
+            for (int i = 0; i < 9; i += 3)
             {
                 double temp = Rotated[i];
                 Rotated[i] = Rotated[i + 2];

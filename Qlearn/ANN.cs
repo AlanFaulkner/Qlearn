@@ -253,7 +253,7 @@ namespace @this
             {
                 case ("Identity"):
                     // Limits -inf -> inf
-                    if (Differential == true) { return 1; }
+                    if (Differential == true) { return X; }
                     else return X;
 
                 case ("Sigmoid"):
@@ -463,7 +463,7 @@ namespace @this
                         {
                             if (j == Network.Count - 1)
                             {
-                                Network[j][k].Error = (Element_Result[k] - Network[j][k].Output) * Activation_Function(Network[j][k].Output, "TanH", true);
+                                Network[j][k].Error = (Element_Result[k] - Network[j][k].Output) * Activation_Function(Network[j][k].Output, "Sigmoid", true);
                                 RMS_Error += Network[j][k].Error * Network[j][k].Error * 0.5;
                                 for (int a = 0; a < Network[j][k].Weight_Update.Count; a++)
                                 {
@@ -478,7 +478,7 @@ namespace @this
                                 {
                                     Network[j][k].Error += Network[j + 1][a].Error * Network[j + 1][a].Weights[a];
                                 }
-                                Network[j][k].Error *= Activation_Function(Network[j][k].Output, "TanH", true);
+                                Network[j][k].Error *= Activation_Function(Network[j][k].Output, "Idenity", true);
                                 for (int a = 0; a < Network[j][k].Weight_Update.Count; a++)
                                 {
                                     Network[j][k].Weight_Update[a] = Network[j][k].Inputs[a] * Network[j][k].Error * Training_Rate;
