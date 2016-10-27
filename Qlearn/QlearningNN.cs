@@ -115,7 +115,7 @@ namespace @this
             MoveData.AddRange(GameState);           // Current board configuration
 
             List<double> StateScore = TicTacToe.Calculate_Netowrk_Output(GameState);       // Get current score for possible solutions to this game state
-            for (int i = 0; i < StateScore.Count; i++) { if (GameState[i] != 0) { StateScore[i] = 1e-2; } } // remove impossible moves
+            //for (int i = 0; i < StateScore.Count; i++) { if (GameState[i] != 0) { StateScore[i] = 1e-2; } } // remove impossible moves
             int NextMove = MakeMove();
             MoveData.AddRange(StateScore);                                          // Existing scores
             MoveData.Add(NextMove);                                                 // Move made
@@ -215,7 +215,7 @@ namespace @this
                 for (int j = 11; j < 20; j++) {
                     GameData[i][j] *= 0.99; 
                     GameData[i][j] = (1 / (1 + Math.Exp(-GameData[i][j])));
-                    if (GameData[i][j] < 1e-10) { GameData[i][j] = 1e-10; } // hard limit on smallest value to prevent complete decay of network outputs
+                    if (GameData[i][j] < 1e-10) { GameData[i][j] = 1e-3; } // hard limit on smallest value to prevent complete decay of network outputs
                 } // apply sigmoid function. have included a decay rate of 0.95 this should mean that none selected states reduced over time
             }
 
